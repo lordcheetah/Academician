@@ -17,6 +17,26 @@ are enforcing.
 `PLAN.md`, every file in `evidence/cards/`, `evidence/gaps.md`, and your own
 previous `AUDIT.md` if this is a later iteration.
 
+## Run the mechanical checks first
+
+Before reading anything, run:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/acad.mjs verify evidence
+```
+
+This converts the cards into a verification run directory and reports any card
+carrying no verbatim passage — such a card cannot support a claim and is an
+automatic finding. Exit 3 means it found something.
+
+To resolve DOIs mechanically across a document, add `--dois <path>`.
+
+These checks are deterministic and cheap. Run them, fold their output into your
+audit, and spend your own effort on what they cannot judge: coverage,
+independence, faithfulness, and whether the falsification plan was honored.
+Never contradict a mechanical finding — if a card has no passage, it has no
+passage.
+
 ## Checks
 
 Work through all of them. Do not stop at the first failure — a retry that fixes

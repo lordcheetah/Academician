@@ -1,0 +1,11 @@
+# Derived from evidence/cards/ on every check and rebuilt from scratch.
+# The cards are the source of truth; this is disposable.
+.academician/verify/
+
+# Exports are regenerated from paper/PAPER.md
+paper/*.pdf
+paper/*.docx
+paper/*.tex
+
+.DS_Store
+Thumbs.db

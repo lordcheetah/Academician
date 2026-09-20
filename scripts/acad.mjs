@@ -13,6 +13,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+// Plugin root: this file lives in <root>/scripts/.
+const HERE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 const HOME = os.homedir();
 const USER_DIR = path.join(HOME, '.academician');
@@ -44,8 +49,11 @@ const DEFAULT_CONFIG = {
   commons_path: path.join(HOME, 'Documents', 'GitHub', 'research-commons'),
   default_visibility: 'private',
   integrations: {
-    research_skill: null,
-    paper_skill: null,
+    // Skill names as the Skill tool sees them. A plugin skill is
+    // "<plugin>:<skill>"; a bare ~/.claude/skills/ skill is just its name.
+    research_skill: 'academic-research-skills:deep-research',
+    paper_skill: 'academic-research-skills:academic-paper',
+    reviewer_skill: 'academic-research-skills:academic-paper-reviewer',
     style_skill: null,
     citation_style: 'APA',
   },
@@ -569,6 +577,167 @@ function cmdCommonsStale() {
   for (const c of stale) console.log(`  ${c.id}  verified=${c.verified_on || 'never'}  ${c.statement || ''}`);
 }
 
+// ----------------------------------------------------------------- verify
+
+/**
+ * Deterministic evidence checking, layered over the vendored scripts in
+ * vendor/deep-research-verify (see its NOTICE.md).
+ *
+ * The verdict is computed here rather than taken from the vendored tools:
+ * upstream's pass threshold is tuned for its own report format and will
+ * report "pass" at a 50% unsupported rate, which is not our bar.
+ */
+
+const PY = process.env.ACAD_PYTHON || 'python';
+const SCRIPTS = path.join(HERE, 'scripts');
+const VENDOR = path.join(HERE, 'vendor', 'deep-research-verify', 'scripts');
+
+function runPy(script, argv, { allowExit = [0] } = {}) {
+  const res = spawnSync(PY, [script, ...argv], { encoding: 'utf8' });
+  if (res.error) {
+    die(`could not run ${PY} — set ACAD_PYTHON to your interpreter (${res.error.message})`);
+  }
+  if (!allowExit.includes(res.status)) {
+    const out = (res.stderr || res.stdout || '').trim();
+    die(`${path.basename(script)} exited ${res.status}: ${out}`);
+  }
+  return { code: res.status, out: (res.stdout || '').trim(), err: (res.stderr || '').trim() };
+}
+
+function verifyRunDir(root) {
+  return path.join(root, '.academician', 'verify');
+}
+
+function buildRunDir(root, question) {
+  // Exit 2 means "converted, but some cards carry no quoted passage" — that is
+  // a finding for the checker, not a failure to build the run directory.
+  const r = runPy(path.join(SCRIPTS, 'cards_to_run.py'),
+    ['--project', root, '--query', question || '', '--quiet'], { allowExit: [0, 2] });
+  return r;
+}
+
+function cmdVerifyEvidence(_pos, flags) {
+  const { root, project } = requireProject(flags);
+  console.log('building verification run from evidence/cards/ ...');
+  buildRunDir(root, project.title);
+  const runDir = verifyRunDir(root);
+
+  const sources = fs.existsSync(path.join(runDir, 'sources.jsonl'))
+    ? fs.readFileSync(path.join(runDir, 'sources.jsonl'), 'utf8').trim().split('\n').filter(Boolean).length
+    : 0;
+  const evidence = fs.existsSync(path.join(runDir, 'evidence.jsonl'))
+    ? fs.readFileSync(path.join(runDir, 'evidence.jsonl'), 'utf8').trim().split('\n').filter(Boolean).length
+    : 0;
+
+  const cardMap = readJson(path.join(runDir, 'card_map.json'), {});
+  const noPassage = Object.entries(cardMap).filter(([, v]) => {
+    const evRows = fs.existsSync(path.join(runDir, 'evidence.jsonl'))
+      ? fs.readFileSync(path.join(runDir, 'evidence.jsonl'), 'utf8')
+      : '';
+    return !evRows.includes(`"${v.source_id}"`);
+  }).map(([k]) => k);
+
+  console.log(`\nsources:  ${sources}`);
+  console.log(`evidence: ${evidence} quoted passages`);
+
+  if (noPassage.length) {
+    console.log(`\nBLOCKER — ${noPassage.length} card(s) with no quoted passage:`);
+    for (const c of noPassage) console.log(`  ${c}`);
+    console.log('A card with no verbatim passage cannot support any claim.');
+  }
+
+  if (flags.dois) {
+    console.log('\nresolving DOIs (needs network) ...');
+    const r = runPy(path.join(VENDOR, 'verify_citations.py'),
+      ['--report', flags.dois], { allowExit: [0, 1] });
+    console.log(r.out || r.err);
+  }
+
+  const verdict = noPassage.length ? 'REVISE' : 'PASS';
+  console.log(`\nverdict (mechanical checks only): ${verdict}`);
+  console.log('Coverage, independence, and falsification judgment stay with acad-evidence-checker.');
+  process.exit(verdict === 'PASS' ? 0 : 3);
+}
+
+function cmdVerifyDraft(pos, flags) {
+  const { root, project } = requireProject(flags);
+  const report = path.resolve(root, pos[0] || flags.report || path.join('draft', 'DRAFT.md'));
+  if (!fs.existsSync(report)) die(`no draft at ${report}`);
+
+  console.log(`checking ${path.relative(root, report)} against evidence/cards/ ...\n`);
+  buildRunDir(root, project.title);
+  const runDir = verifyRunDir(root);
+
+  // Rebuild the claim ledger from scratch; a stale one verifies an old draft.
+  const claimsPath = path.join(runDir, 'claims.jsonl');
+  if (fs.existsSync(claimsPath)) fs.rmSync(claimsPath);
+
+  runPy(path.join(VENDOR, 'extract_claims.py'), ['extract', '--report', report, '--dir', runDir]);
+
+  const link = runPy(path.join(SCRIPTS, 'link_claims.py'),
+    ['--dir', runDir, '--json'], { allowExit: [0, 1, 2] });
+  const linkResult = JSON.parse(link.out);
+
+  runPy(path.join(VENDOR, 'verify_claim_support.py'),
+    ['verify', '--dir', runDir], { allowExit: [0, 1] });
+
+  const claims = fs.readFileSync(claimsPath, 'utf8').trim().split('\n')
+    .filter(Boolean).map((l) => JSON.parse(l));
+  const byStatus = {};
+  for (const c of claims) byStatus[c.support_status] = (byStatus[c.support_status] || 0) + 1;
+
+  // A claim with no marker is already reported as uncited by link_claims;
+  // do not also count it as an unsupported factual claim.
+  const citedUnsupported = claims.filter(
+    (c) => c.support_status === 'unsupported' && (c.cited_source_ids || []).length > 0);
+  const partial = claims.filter((c) => c.support_status === 'partial');
+  const needsReview = claims.filter((c) => c.support_status === 'needs_review');
+
+  console.log(`claims extracted: ${claims.length}`);
+  console.log(`support status:   ${JSON.stringify(byStatus)}`);
+
+  const blockers = [];
+  if (linkResult.dangling) {
+    blockers.push(`${linkResult.dangling} dangling reference(s)`);
+    console.log('\nBLOCKER — dangling references:');
+    for (const d of linkResult.dangling_refs) console.log(`  [[${d.marker}]]  ${d.text}`);
+  }
+  if (linkResult.uncited) {
+    blockers.push(`${linkResult.uncited} uncited assertion(s)`);
+    console.log('\nBLOCKER — uncited assertions:');
+    for (const t of linkResult.uncited_claims) console.log(`  ${t}`);
+  }
+  if (citedUnsupported.length) {
+    blockers.push(`${citedUnsupported.length} cited-but-unsupported claim(s)`);
+    console.log('\nBLOCKER — cited source does not support the claim:');
+    for (const c of citedUnsupported) console.log(`  ${c.text.slice(0, 150)}`);
+  }
+  if (partial.length) {
+    console.log('\nREVIEW — partial support (likely overreach; narrow the claim):');
+    for (const c of partial) console.log(`  ${c.text.slice(0, 150)}`);
+  }
+  if (needsReview.length) {
+    console.log('\nREVIEW — cites a card with no quoted passage:');
+    for (const c of needsReview) console.log(`  ${c.text.slice(0, 150)}`);
+  }
+
+  const verdict = blockers.length ? 'REVISE-DRAFT' : 'PASS';
+  console.log(`\nverdict (mechanical checks only): ${verdict}`);
+  if (blockers.length) console.log(`  ${blockers.join('; ')}`);
+  console.log('Faithfulness, argument integrity, and scope stay with acad-draft-checker.');
+  console.log(`\nledger: ${path.relative(root, claimsPath)}`);
+  process.exit(verdict === 'PASS' ? 0 : 3);
+}
+
+function cmdVerifyTest() {
+  const testDir = path.join(HERE, 'vendor', 'deep-research-verify');
+  const res = spawnSync(PY, ['-m', 'pytest', 'tests/', '-q'],
+    { cwd: testDir, encoding: 'utf8' });
+  console.log(res.stdout || '');
+  if (res.stderr) console.error(res.stderr);
+  process.exit(res.status ?? 1);
+}
+
 // ------------------------------------------------------------------- help
 
 const HELP = `acad — Academician state, registry, and commons operations
@@ -598,6 +767,15 @@ const HELP = `acad — Academician state, registry, and commons operations
   commons index                        rebuild INDEX.md and refs.bib
   commons stale                        claims past staleness_days
 
+  verify evidence [--dois <report.md>] cards -> run dir; flags cards with no
+                                       quoted passage; optional DOI resolution
+  verify draft [<report.md>]           extract claims, link [[card-id]] markers,
+                                       check support. Default draft/DRAFT.md
+  verify test                          run the vendored verification test suite
+
+Verify exits 3 on REVISE so a caller can branch on it. Mechanical checks only:
+coverage, independence, faithfulness and scope stay with the checker agents.
+
 Project commands act on the nearest .academician/ ancestor of the cwd, or
 --project <path>.
 Stages: ${STAGES.join(' -> ')}`;
@@ -610,6 +788,7 @@ const ROUTES = {
   state: { show: cmdStateShow, set: cmdStateSet, advance: cmdStateAdvance, iterate: cmdStateIterate, block: cmdStateBlock },
   gate: { log: cmdGateLog },
   commons: { search: cmdCommonsSearch, show: cmdCommonsShow, index: cmdCommonsIndex, stale: cmdCommonsStale },
+  verify: { evidence: cmdVerifyEvidence, draft: cmdVerifyDraft, test: cmdVerifyTest },
 };
 
 function main() {

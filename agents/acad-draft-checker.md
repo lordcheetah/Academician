@@ -16,6 +16,34 @@ Read the `evidence-standards` skill first.
 `draft/DRAFT.md`, `draft/OUTLINE.md`, all of `evidence/cards/`, `PLAN.md`,
 `BRIEF.md`, and your previous `CHECK.md` if this is a later iteration.
 
+## Run the mechanical checks first
+
+Before reading the draft, run:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/acad.mjs verify draft
+```
+
+This extracts every claim, resolves each `[[card-id]]` marker against the
+cards, and scores claim support deterministically against the quoted passages.
+Exit 3 means blockers. It reports four things:
+
+| Output | Meaning | Your handling |
+|---|---|---|
+| dangling references | marker resolves to no card | Blocking. Report verbatim. |
+| uncited assertions | factual sentence with no marker | Blocking. Report verbatim. |
+| cited-but-unsupported | marker resolves, quotes do not support it | Blocking. Read the quote and say what the sentence would have to be. |
+| partial support | lexical overlap short of the claim | **Read each one.** This is where overreach lives. |
+
+The `partial` list is the most valuable output and the one needing your
+judgment: the checker can tell that a sentence claims more than its quote, but
+only you can say whether the fix is narrowing the claim (`REVISE-DRAFT`) or
+finding evidence (`REVISE-EVIDENCE`).
+
+Fold the mechanical results into your report rather than re-deriving them by
+hand, and never overrule one — a dangling reference is dangling. Then spend
+your effort on checks 3 through 7 below, which no script can do.
+
 ## Checks, in this order
 
 ### 1. Uncited assertions

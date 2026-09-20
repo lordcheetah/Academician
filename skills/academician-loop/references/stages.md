@@ -103,7 +103,10 @@ is defined in the `evidence-standards` skill.
 Each researcher:
 
 1. Searches the commons first. An existing verified claim is cited, not redone.
-2. Searches per the plan strategy, using `research_skill` if configured.
+2. Searches per the plan strategy. If `research_skill` is configured (default
+   `academic-research-skills:deep-research`), invoke it for retrieval and
+   synthesis, then convert what it returns into cards. Its own report format
+   is not the deliverable here — cards are. Unset: WebSearch/WebFetch.
 3. Reads the actual source. A card may not be written from an abstract, a search
    snippet, or another paper citing it. If the full text is unreachable, the card
    is marked `access: abstract-only` and the checker will discount it.
@@ -128,6 +131,9 @@ Each researcher:
 **Inputs:** `PLAN.md`, all of `evidence/cards/`, `evidence/gaps.md`.
 
 **Produces:** `evidence/AUDIT.md` with a verdict of `PASS` or `REVISE`.
+
+Run `acad verify evidence` first (exit 3 = findings). It flags cards with no
+verbatim passage deterministically. Fold its output in; never overrule it.
 
 The checker audits the evidence base as a whole:
 
@@ -228,6 +234,13 @@ Rules:
 **Produces:** `draft/CHECK.md` with verdict `PASS`, `REVISE-DRAFT`, or
 `REVISE-EVIDENCE`.
 
+Run `acad verify draft` first (exit 3 = blockers). It resolves every
+`[[card-id]]` and scores claim support against the quoted passages, catching
+dangling references, uncited assertions, and unsupported claims mechanically.
+Its `partial support` list is where overreach surfaces — read every entry.
+Fold the results in rather than re-deriving them, then apply checks 3-7 below,
+which no script can do.
+
 Checks, in order of severity:
 
 1. **Uncited assertions** — every factual claim has a reference. List each
@@ -276,7 +289,10 @@ retry.
 The writer turns a checked argument into a paper. It may reorganize, compress,
 and rewrite freely — but it may not change what is claimed.
 
-- Structure per the output kind. Use `paper_skill` if configured; otherwise
+- Structure per the output kind. If `paper_skill` is configured (default
+  `academic-research-skills:academic-paper`), invoke it for structure,
+  formatting, and citation conventions; it is far deeper than the fallback.
+  Pass it the checked draft and require that it change no claim. Unset:
   `references/paper-structure.md`.
 - Convert `[[claim-id]]` markers to proper citations in the configured style, and
   build `refs.bib` from the card bibliographic frontmatter.
@@ -299,6 +315,15 @@ a paper with a known hole.
 
 **Agents, in parallel:** `acad-reviewer-method`, `acad-reviewer-contribution`,
 `acad-reviewer-clarity`.
+
+If `reviewer_skill` is configured (default
+`academic-research-skills:academic-paper-reviewer`), use it **instead of** the
+three built-in agents — it runs its own multi-seat panel. Map its output onto
+the same contract below: one file per perspective in `review/`, each ending in
+an `ACCEPT`/`MINOR`/`MAJOR`/`REJECT` verdict with numbered findings carrying
+severity, location, and remedy. The editor at stage 9 reads that contract and
+does not care which produced it. Do not run both — duplicate panels produce
+duplicate findings and burn the review budget.
 
 **Inputs:** `paper/PAPER.md`, `paper/TRACE.md`, `evidence/cards/`, `BRIEF.md`.
 On a Loop C iteration, also `review/RESPONSE.md` and each reviewer's own prior

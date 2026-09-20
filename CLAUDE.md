@@ -18,7 +18,10 @@ ever appears in `git status` here, something has gone wrong.
 | `skills/` | The protocol. `academician-loop` is the pipeline; `evidence-standards` and `research-commons` are the rules it enforces. |
 | `agents/` | Eleven subagent definitions, one per pipeline role. |
 | `commands/` | Slash commands — thin drivers that load a skill and dispatch agents. |
-| `scripts/acad.mjs` | Deterministic state, registry, and commons operations. |
+| `scripts/acad.mjs` | Deterministic state, registry, commons, and verify operations. |
+| `scripts/cards_to_run.py` | Bridges markdown cards to the vendored JSONL format. |
+| `scripts/link_claims.py` | Resolves `[[card-id]]` markers to sources — the step upstream leaves to its own pipeline. |
+| `vendor/deep-research-verify/` | Vendored MIT verification layer. See its `NOTICE.md`. Do not edit. |
 | `templates/` | Scaffolds copied into new projects and new commons repos. |
 | `schemas/` | JSON Schema for `project.json`, `run-state.json`, `registry.json`. |
 
@@ -60,6 +63,33 @@ a design decision, not a refactor:
    `acad-researcher` and `acad-evidence-checker`, however tempting the token
    savings.
 7. **Reviewers do not edit.** Only `acad-editor` revises after the write stage.
+8. **Mechanical findings are not overrulable.** A dangling reference or a card
+   with no quoted passage is a fact, not a judgment. Checker agents fold
+   `acad verify` output into their reports and never argue with it.
+9. **Cards are the source of truth; `.academician/verify/` is derived.** It is
+   deleted and rebuilt on every check. Never write to it by hand or read it as
+   authoritative.
+10. **One orchestrator.** Integration slots call *component* skills. Never call
+    `academic-research-skills:academic-pipeline` — it is a competing
+    orchestrator with its own gates and would desynchronize our state file.
+
+## The vendored verification layer
+
+`vendor/deep-research-verify/` is third-party MIT code (provenance and refresh
+instructions in its `NOTICE.md`). Treat it as read-only: it is byte-for-byte
+upstream so that refreshing is a re-copy plus a test run. Anything Academician
+needs that upstream does not provide goes in `scripts/`, not in `vendor/`.
+
+`link_claims.py` exists because upstream's `extract_claims.py` only recognizes
+numeric `[1]` citations and leaves `cited_source_ids` empty for "the linking
+step". Without our linker every claim scores unsupported and the whole check is
+worthless. If you change the draft marker syntax, change it there.
+
+Verify the layer still works after any touch:
+
+```bash
+node scripts/acad.mjs verify test     # 45 upstream tests
+```
 
 ## Editing skills and agents
 
@@ -89,6 +119,19 @@ directory so you do not write to the real `~/.academician/`.
 
 Check at minimum: the gate refusal above, and that `state iterate` exits 3 and
 sets `status: blocked` when a budget is spent.
+
+For the verify path, build a scratch project with a card carrying a quoted
+passage and a draft citing it, then confirm all four detections fire:
+
+```bash
+node scripts/acad.mjs verify draft --project /tmp/t
+```
+
+A draft with a good claim, an overreaching claim, an uncited assertion, and a
+`[[card-does-not-exist]]` marker should yield `supported`, `partial`, an
+uncited blocker, and a dangling blocker respectively. If `partial` stops
+distinguishing overreach, the value of the whole layer is gone — check
+`link_claims.py` is populating `evidence_ids`.
 
 ## Style
 

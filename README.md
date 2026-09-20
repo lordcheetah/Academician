@@ -50,6 +50,26 @@ quote behind it, which is what catches the quiet overreach — correlation cited
 as causation, a single-population result stated as general, a hedge dropped in
 the rewrite.
 
+Both checks are **mechanical, not model judgment**:
+
+```bash
+acad verify evidence    # cards with no verbatim passage
+acad verify draft       # dangling refs, uncited assertions, unsupported claims
+```
+
+Every claim is extracted, its `[[card-id]]` markers resolved, and its support
+scored against the stored quotes by deterministic entity, number, and lexical
+checks with no LLM in the loop. A sentence reading "entropy rises under all
+forms of shift in every model" backed by a quote about one architecture above
+0.3 shift comes back `partial` — which is exactly the overreach a model
+reviewing its own work tends to wave through. The checker agents read these
+results and are forbidden from overruling them.
+
+This layer is vendored from
+[claude-deep-research-skill](https://github.com/199-biotechnologies/claude-deep-research-skill)
+(MIT, Boris Djordjevic) — see [vendor/deep-research-verify/NOTICE.md](vendor/deep-research-verify/NOTICE.md).
+Its 45 tests ship with it: `acad verify test`.
+
 ## Install
 
 ```bash
@@ -153,8 +173,9 @@ in `scripts/acad.mjs`, not left to the model's discretion.
   "commons_path": "/path/to/research-commons",
   "default_visibility": "private",
   "integrations": {
-    "research_skill": null,
-    "paper_skill": null,
+    "research_skill": "academic-research-skills:deep-research",
+    "paper_skill": "academic-research-skills:academic-paper",
+    "reviewer_skill": "academic-research-skills:academic-paper-reviewer",
     "style_skill": null,
     "citation_style": "APA"
   },
@@ -167,11 +188,39 @@ in `scripts/acad.mjs`, not left to the model's discretion.
 }
 ```
 
-**Integrations** let the pipeline hand off to plugins you already have. Set
-`research_skill` to a deep-research skill and the researcher agent uses it for
-retrieval; set `paper_skill` to an academic-writing skill and the writer uses
-it for structure and formatting; set `style_skill` for the prose pass. Leave
-them `null` and the pipeline uses built-in fallbacks — weaker, but functional.
+**Integrations** are where the heavy per-stage work is delegated. Academician
+is the orchestrator, the registry, and the commons; it does not try to
+out-write a dedicated writing plugin.
+
+The defaults point at
+[academic-research-skills](https://github.com/Imbad0202/academic-research-skills)
+(CC BY-NC 4.0), which is excellent at the per-paper work Academician
+deliberately does not duplicate:
+
+```bash
+/plugin marketplace add Imbad0202/academic-research-skills
+/plugin install academic-research-skills
+```
+
+| Slot | Default | Fallback if unset or missing |
+|---|---|---|
+| `research_skill` | `academic-research-skills:deep-research` | WebSearch/WebFetch |
+| `paper_skill` | `academic-research-skills:academic-paper` | built-in structures |
+| `reviewer_skill` | `academic-research-skills:academic-paper-reviewer` | the three built-in reviewer agents |
+| `style_skill` | unset | no dedicated prose pass |
+
+Everything degrades gracefully: an unset or uninstalled slot is reported at the
+start of the run and the fallback is used.
+
+**Note the licence.** `academic-research-skills` is CC BY-NC 4.0 —
+NonCommercial. Academician itself is MIT and never vendors its content, so the
+NC term applies only if you install it. Clear the integration slots to run
+fully MIT.
+
+**One orchestrator.** That plugin also ships `academic-pipeline`, its own
+end-to-end orchestrator. Academician calls its *component* skills and never
+`academic-pipeline` — two orchestrators would each impose their own gates and
+the state file would stop reflecting reality.
 
 Per-project settings live in `<project>/.academician/project.json` and override
 the defaults.

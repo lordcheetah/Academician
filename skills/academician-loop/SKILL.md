@@ -152,18 +152,46 @@ protocol. In brief:
 
 ## Delegated skills
 
-`~/.academician/config.json` names the skills this loop hands off to, under
-`integrations`. Check it at the start of a run:
+This loop is the orchestrator and the multi-project layer. The heavy per-stage
+work is delegated to whatever skills are named in `~/.academician/config.json`
+under `integrations`. Check it at the start of a run.
 
-- `research_skill` — invoked by `acad-researcher` for retrieval. Unset: the
-  researcher falls back to WebSearch/WebFetch plus any connected MCP sources.
-- `paper_skill` — invoked by `acad-writer` for structure and formatting
-  conventions. Unset: the writer follows `references/paper-structure.md`.
-- `style_skill` — invoked by `acad-writer` for the prose pass.
-- `citation_style` — a string such as `APA`, `Chicago`, `IEEE`. Default `APA`.
+| Slot | Default | Used by | Fallback when unset or missing |
+|---|---|---|---|
+| `research_skill` | `academic-research-skills:deep-research` | `acad-researcher` | WebSearch/WebFetch plus connected MCP sources |
+| `paper_skill` | `academic-research-skills:academic-paper` | `acad-writer` | `references/paper-structure.md` |
+| `reviewer_skill` | `academic-research-skills:academic-paper-reviewer` | review stage | the three built-in reviewer agents |
+| `style_skill` | unset | `acad-writer` | no dedicated prose pass |
+| `citation_style` | `APA` | `acad-writer` | — |
 
 A named skill that is not installed is a configuration error: say so plainly at
 the start of the run and continue with the fallback rather than failing.
+
+**One orchestrator only.** The `academic-research-skills` plugin also ships
+`academic-pipeline`, its own end-to-end orchestrator with its own checkpoints
+and caps. Do not invoke it from here. Two orchestrators would each impose their
+own gates and iteration accounting, and this loop's state file would stop
+reflecting reality. Call that plugin's *component* skills — `deep-research`,
+`academic-paper`, `academic-paper-reviewer` — and never `academic-pipeline`.
+
+## Mechanical verification
+
+Two stages have deterministic checks backed by the vendored scripts in
+`vendor/deep-research-verify/` (provenance in its `NOTICE.md`):
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/acad.mjs verify evidence   # stage 3
+node ${CLAUDE_PLUGIN_ROOT}/scripts/acad.mjs verify draft      # stage 6
+```
+
+Both exit 3 when they find blockers. They catch dangling `[[card-id]]`
+references, uncited assertions, cards with no verbatim passage, and claims
+whose cited quotes do not support them. The checker agents run these before
+applying their own judgment and never overrule a mechanical finding.
+
+The verification run directory at `<project>/.academician/verify/` is derived
+from the cards and is disposable — it is rebuilt on every check. The cards
+remain the source of truth.
 
 ## What not to do
 
