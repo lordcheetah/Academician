@@ -1,0 +1,15 @@
+# Academician is the public loop. Research projects live in their own sibling
+# repos and are never committed here. The user's registry is private and lives
+# at ~/.academician/registry.json, not in this repo.
+#
+# These patterns are anchored with a leading slash on purpose: an unanchored
+# "commons/" would also match templates/commons/, which must be committed.
+/registry.json
+/config.json
+/projects/
+/commons/
+*.local.json
+
+.DS_Store
+Thumbs.db
+node_modules/

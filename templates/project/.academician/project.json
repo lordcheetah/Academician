@@ -1,0 +1,20 @@
+{
+  "slug": "PROJECT_SLUG",
+  "title": "PROJECT_TITLE",
+  "visibility": "private",
+  "output_kind": "literature-review",
+  "audience": "",
+  "topics": [],
+  "gates": "standard",
+  "max_iterations": {
+    "plan": 2,
+    "research": 3,
+    "draft": 3,
+    "review": 3
+  },
+  "min_sources": 3,
+  "exports": ["markdown"],
+  "citation_style": "APA",
+  "builds_on": [],
+  "created": "CREATED_DATE"
+}

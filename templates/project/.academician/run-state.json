@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "stage": "intake",
+  "status": "running",
+  "iterations": { "plan": 0, "research": 0, "draft": 0, "review": 0 },
+  "gates_passed": [],
+  "history": [],
+  "updated": null
+}

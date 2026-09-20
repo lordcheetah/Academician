@@ -1,0 +1,13 @@
+{
+  "name": "academician",
+  "description": "A gated, iterative research-to-paper pipeline: planner, researcher, evidence checker, drafter, draft checker, writer, reviewer panel, and editor. Loops each stage until it passes or hits its iteration budget, stops at human approval gates, and accumulates verified findings in a shared research commons reusable across papers.",
+  "version": "0.1.0",
+  "author": {
+    "name": "James Guenther",
+    "email": "lordcheetah@users.noreply.github.com"
+  },
+  "homepage": "https://github.com/lordcheetah/Academician",
+  "repository": "https://github.com/lordcheetah/Academician",
+  "license": "MIT",
+  "keywords": ["research", "academic-writing", "agent-loop", "citations", "human-in-the-loop"]
+}

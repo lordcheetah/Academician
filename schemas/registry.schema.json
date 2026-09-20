@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/lordcheetah/Academician/schemas/registry.schema.json",
+  "title": "Academician project registry",
+  "description": "Lives at ~/.academician/registry.json -- private user state, never committed to the public plugin repo.",
+  "type": "object",
+  "required": ["version", "projects"],
+  "properties": {
+    "version": { "const": 1 },
+    "projects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["slug", "path"],
+        "properties": {
+          "slug": { "type": "string" },
+          "title": { "type": "string" },
+          "path": { "type": "string", "description": "Absolute path to the project repo." },
+          "visibility": { "enum": ["private", "public"] },
+          "topics": { "type": "array", "items": { "type": "string" } },
+          "created": { "type": "string", "format": "date" },
+          "status": { "enum": ["active", "complete", "archived", "abandoned"] }
+        }
+      }
+    }
+  }
+}

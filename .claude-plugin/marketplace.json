@@ -1,0 +1,18 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "academician",
+  "description": "Academician: a human-gated agent loop for deep research and academic paper writing.",
+  "owner": {
+    "name": "James Guenther",
+    "email": "lordcheetah@users.noreply.github.com"
+  },
+  "plugins": [
+    {
+      "name": "academician",
+      "description": "A gated, iterative research-to-paper pipeline with a shared research commons across projects.",
+      "author": { "name": "James Guenther" },
+      "category": "research",
+      "source": "./"
+    }
+  ]
+}
