@@ -96,6 +96,15 @@ or just run `/acad-new` and it will offer to initialize on first use.
 /acad-commons search "<terms>"     # what has already been established?
 ```
 
+Check the wiring at any time:
+
+```bash
+acad doctor --tests
+```
+
+It resolves every integration slot against the skills actually installed,
+checks the commons and the verification layer, and runs the vendored tests.
+
 ## Agents
 
 | Agent | Job |

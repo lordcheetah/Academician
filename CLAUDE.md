@@ -18,7 +18,7 @@ ever appears in `git status` here, something has gone wrong.
 | `skills/` | The protocol. `academician-loop` is the pipeline; `evidence-standards` and `research-commons` are the rules it enforces. |
 | `agents/` | Eleven subagent definitions, one per pipeline role. |
 | `commands/` | Slash commands — thin drivers that load a skill and dispatch agents. |
-| `scripts/acad.mjs` | Deterministic state, registry, commons, and verify operations. |
+| `scripts/acad.mjs` | Deterministic state, registry, commons, verify, and doctor operations. |
 | `scripts/cards_to_run.py` | Bridges markdown cards to the vendored JSONL format. |
 | `scripts/link_claims.py` | Resolves `[[card-id]]` markers to sources — the step upstream leaves to its own pipeline. |
 | `vendor/deep-research-verify/` | Vendored MIT verification layer. See its `NOTICE.md`. Do not edit. |

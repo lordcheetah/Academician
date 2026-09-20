@@ -738,11 +738,157 @@ function cmdVerifyTest() {
   process.exit(res.status ?? 1);
 }
 
+// ----------------------------------------------------------------- doctor
+
+/** Skill names declared by SKILL.md files directly under `dir`. */
+function scanSkillDir(dir) {
+  const names = [];
+  if (!fs.existsSync(dir)) return names;
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return names;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const skillFile = path.join(dir, entry.name, 'SKILL.md');
+    if (!fs.existsSync(skillFile)) continue;
+    let name = entry.name;
+    const m = fs.readFileSync(skillFile, 'utf8').match(/^name:\s*(.+)$/m);
+    if (m) name = m[1].trim().replace(/^["']|["']$/g, '');
+    names.push({ name, path: path.join(dir, entry.name) });
+  }
+  return names;
+}
+
+function subdirs(dir) {
+  if (!fs.existsSync(dir)) return [];
+  try {
+    return fs.readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isDirectory()).map((e) => e.name);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Every installed skill, keyed as the Skill tool addresses it: a bare name for
+ * ~/.claude/skills, and "<plugin>:<skill>" for a plugin's.
+ */
+function installedSkills() {
+  const found = new Map();
+
+  for (const s of scanSkillDir(path.join(HOME, '.claude', 'skills'))) {
+    found.set(s.name, { source: 'user', path: s.path });
+  }
+
+  // ~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/[skills/]<skill>/
+  const cache = path.join(HOME, '.claude', 'plugins', 'cache');
+  for (const market of subdirs(cache)) {
+    for (const plugin of subdirs(path.join(cache, market))) {
+      for (const ver of subdirs(path.join(cache, market, plugin))) {
+        const vdir = path.join(cache, market, plugin, ver);
+        for (const s of [...scanSkillDir(vdir), ...scanSkillDir(path.join(vdir, 'skills'))]) {
+          found.set(`${plugin}:${s.name}`, { source: `plugin ${plugin}@${ver}`, path: s.path });
+        }
+      }
+    }
+  }
+  return found;
+}
+
+function cmdDoctor(_pos, flags) {
+  const problems = [];
+  const warnings = [];
+  const ok = (m) => console.log(`  ok    ${m}`);
+  const bad = (m) => { console.log(`  FAIL  ${m}`); problems.push(m); };
+  const warn = (m) => { console.log(`  warn  ${m}`); warnings.push(m); };
+
+  console.log('config');
+  const cfg = readJson(CONFIG_PATH);
+  if (!cfg) {
+    bad(`no config at ${CONFIG_PATH} — run: acad init`);
+    process.exit(1);
+  }
+  ok(CONFIG_PATH);
+
+  const commons = cfg.commons_path;
+  if (!commons) warn('no commons_path set — cross-project reuse is off');
+  else if (!fs.existsSync(commons)) bad(`commons_path does not exist: ${commons}`);
+  else if (!fs.existsSync(path.join(commons, 'claims'))) {
+    warn(`commons at ${commons} has no claims/ — not scaffolded?`);
+  } else ok(`commons ${commons}`);
+
+  console.log('\nintegrations');
+  const skills = installedSkills();
+  const slots = ['research_skill', 'paper_skill', 'reviewer_skill', 'style_skill'];
+  for (const slot of slots) {
+    const name = (cfg.integrations || {})[slot];
+    if (!name) { warn(`${slot}: unset — falls back to built-in`); continue; }
+    const hit = skills.get(name);
+    if (hit) ok(`${slot}: ${name}  [${hit.source}]`);
+    else {
+      // A bare name may resolve if exactly one plugin provides it.
+      const suffix = [...skills.keys()].filter((k) => k.endsWith(`:${name}`));
+      if (suffix.length === 1) {
+        warn(`${slot}: "${name}" not found, but "${suffix[0]}" is installed — update config`);
+      } else {
+        bad(`${slot}: "${name}" is NOT installed — the run will use the fallback`);
+      }
+    }
+  }
+  if (skills.has('academic-research-skills:academic-pipeline')) {
+    warn('academic-pipeline is installed. Never route stages to it — it is a '
+       + 'competing orchestrator. Use its component skills only.');
+  }
+
+  console.log('\nverification layer');
+  const vendorDir = path.join(HERE, 'vendor', 'deep-research-verify');
+  if (!fs.existsSync(path.join(vendorDir, 'scripts', 'verify_claim_support.py'))) {
+    bad('vendor/deep-research-verify is missing — verify commands will fail');
+  } else {
+    ok('vendored scripts present');
+    const py = spawnSync(PY, ['--version'], { encoding: 'utf8' });
+    if (py.error || py.status !== 0) {
+      bad(`python not runnable as "${PY}" — set ACAD_PYTHON`);
+    } else {
+      ok(`python ${(py.stdout || py.stderr).trim()}`);
+      if (flags.tests) {
+        const t = spawnSync(PY, ['-m', 'pytest', 'tests/', '-q'],
+          { cwd: vendorDir, encoding: 'utf8' });
+        const line = (t.stdout || '').trim().split('\n').pop();
+        if (t.status === 0) ok(`vendored tests: ${line}`);
+        else bad(`vendored tests failing: ${line}`);
+      }
+    }
+  }
+
+  console.log('\nregistry');
+  const reg = getRegistry();
+  ok(`${reg.projects.length} project(s)`);
+  for (const p of reg.projects) {
+    if (!fs.existsSync(p.path)) bad(`${p.slug}: path missing — ${p.path}`);
+    else if (!fs.existsSync(path.join(p.path, '.academician', 'run-state.json'))) {
+      warn(`${p.slug}: registered but has no run-state.json`);
+    }
+  }
+
+  console.log('');
+  if (problems.length) {
+    console.log(`${problems.length} problem(s), ${warnings.length} warning(s)`);
+    process.exit(1);
+  }
+  console.log(`healthy${warnings.length ? ` (${warnings.length} warning(s))` : ''}`);
+}
+
 // ------------------------------------------------------------------- help
 
 const HELP = `acad — Academician state, registry, and commons operations
 
   init                                 create ~/.academician/{config,registry}.json
+  doctor [--tests]                     check config, integrations, verify layer,
+                                       and registry health
 
   project add <slug> --path <dir>      register a project
         [--title t] [--visibility private|public] [--topics a,b]
@@ -784,6 +930,7 @@ Stages: ${STAGES.join(' -> ')}`;
 
 const ROUTES = {
   init: { _: cmdInit },
+  doctor: { _: cmdDoctor },
   project: { add: cmdProjectAdd, list: cmdProjectList, show: cmdProjectShow, update: cmdProjectUpdate, remove: cmdProjectRemove },
   state: { show: cmdStateShow, set: cmdStateSet, advance: cmdStateAdvance, iterate: cmdStateIterate, block: cmdStateBlock },
   gate: { log: cmdGateLog },

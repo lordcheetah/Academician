@@ -14,8 +14,14 @@ this session.
 ## Start
 
 ```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/acad.mjs doctor
 node ${CLAUDE_PLUGIN_ROOT}/scripts/acad.mjs state show
 ```
+
+`doctor` exits 1 on a real problem. Report any FAIL line to the user before
+running a stage — a missing integration silently falling back to WebSearch is
+the kind of thing that is obvious in the output and invisible in the result.
+Warnings are fine to note in one line and continue.
 
 If this fails because there is no project here, ask whether to `cd` to a
 registered one (`acad project list`) or start a new one (`/acad-new`).

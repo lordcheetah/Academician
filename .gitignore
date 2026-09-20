@@ -10,6 +10,10 @@
 /commons/
 *.local.json
 
+# Plugin enablement is per-machine, and academic-research-skills is CC BY-NC.
+# Cloners should opt in themselves (see README) rather than inherit it.
+/.claude/
+
 .DS_Store
 Thumbs.db
 node_modules/

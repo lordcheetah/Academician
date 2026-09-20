@@ -164,8 +164,10 @@ under `integrations`. Check it at the start of a run.
 | `style_skill` | unset | `acad-writer` | no dedicated prose pass |
 | `citation_style` | `APA` | `acad-writer` | — |
 
-A named skill that is not installed is a configuration error: say so plainly at
-the start of the run and continue with the fallback rather than failing.
+A named skill that is not installed is a configuration error. Do not take this
+on trust — `acad doctor` resolves every slot against what is actually on disk
+and is run at the start of `/acad-run`. Report any FAIL to the user, then
+continue with the fallback rather than failing the run.
 
 **One orchestrator only.** The `academic-research-skills` plugin also ships
 `academic-pipeline`, its own end-to-end orchestrator with its own checkpoints
