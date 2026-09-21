@@ -644,6 +644,30 @@ function cmdVerifyEvidence(_pos, flags) {
   console.log(`\nsources:  ${sources}`);
   console.log(`evidence: ${evidence} quoted passages`);
 
+  // Only `verified: true` cards may be promoted to the commons. An audit that
+  // records its PASS in AUDIT.md without setting the per-card flags leaves the
+  // whole base unpromotable, and nothing used to say so — a real project
+  // reached ship with 2 of 66 cards flagged and would have seeded the commons
+  // with 2 sources out of 63.
+  const cardsDir = path.join(root, 'evidence', 'cards');
+  const cardFiles = fs.existsSync(cardsDir)
+    ? fs.readdirSync(cardsDir).filter((f) => f.endsWith('.md'))
+    : [];
+  let flagged = 0;
+  for (const f of cardFiles) {
+    if (/^verified:\s*true\b/m.test(fs.readFileSync(path.join(cardsDir, f), 'utf8'))) {
+      flagged += 1;
+    }
+  }
+  if (cardFiles.length) {
+    console.log(`verified: ${flagged}/${cardFiles.length} cards flagged `
+      + `(${Math.round((flagged / cardFiles.length) * 100)}%)`);
+    if (flagged < cardFiles.length) {
+      console.log('  note  only `verified: true` cards reach the commons at ship.');
+      console.log('        A passing audit does not set these — acad-evidence-checker must.');
+    }
+  }
+
   if (noPassage.length) {
     console.log(`\nBLOCKER — ${noPassage.length} card(s) with no quoted passage:`);
     for (const c of noPassage) console.log(`  ${c}`);
