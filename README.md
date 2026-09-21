@@ -211,6 +211,14 @@ deliberately does not duplicate:
 /plugin install academic-research-skills
 ```
 
+**Install integrations at user scope, not project scope.** Academician's whole
+design is that research projects are sibling repos, so you are never working
+inside the Academician directory when the pipeline runs. A plugin installed at
+project scope against Academician sits on disk looking healthy and never
+surfaces to the Skill tool where the work actually happens. `acad doctor`
+warns when it finds one. A plugin installed mid-session also stays uninvocable
+until the session restarts.
+
 | Slot | Default | Fallback if unset or missing |
 |---|---|---|
 | `research_skill` | `academic-research-skills:deep-research` | WebSearch/WebFetch |

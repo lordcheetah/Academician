@@ -814,6 +814,28 @@ function installedSkills() {
   return found;
 }
 
+/**
+ * Install scope per plugin, from the CLI's own record.
+ *
+ * Scope matters more than it looks for Academician. A project-scoped plugin
+ * activates only inside the directory it was installed for -- and this design
+ * means you are never working inside the Academician repo when you run the
+ * pipeline. Research projects are sibling repos. So an integration installed
+ * at project scope against Academician itself will sit on disk looking
+ * healthy and never surface to the Skill tool where the work happens.
+ */
+function pluginScopes() {
+  const out = new Map();
+  const rec = readJson(path.join(HOME, '.claude', 'plugins', 'installed_plugins.json'));
+  for (const [key, installs] of Object.entries((rec && rec.plugins) || {})) {
+    const name = key.split('@')[0];
+    out.set(name, (installs || []).map((i) => ({
+      scope: i.scope, projectPath: i.projectPath, installedAt: i.installedAt,
+    })));
+  }
+  return out;
+}
+
 function cmdDoctor(_pos, flags) {
   const problems = [];
   const warnings = [];
@@ -838,13 +860,25 @@ function cmdDoctor(_pos, flags) {
 
   console.log('\nintegrations');
   const skills = installedSkills();
+  const scopes = pluginScopes();
+  const scopeWarned = new Set();   // one warning per plugin, not per slot
   const slots = ['research_skill', 'paper_skill', 'reviewer_skill', 'style_skill'];
   for (const slot of slots) {
     const name = (cfg.integrations || {})[slot];
     if (!name) { warn(`${slot}: unset — falls back to built-in`); continue; }
     const hit = skills.get(name);
-    if (hit) ok(`${slot}: ${name}  [${hit.source}]`);
-    else {
+    if (hit) {
+      ok(`${slot}: ${name}  [${hit.source}]`);
+      const plugin = name.includes(':') ? name.split(':')[0] : null;
+      for (const inst of (scopes.get(plugin) || [])) {
+        if (inst.scope === 'project' && !scopeWarned.has(plugin)) {
+          scopeWarned.add(plugin);
+          warn(`  ${plugin} is installed at PROJECT scope for ${inst.projectPath}. `
+             + 'It will not surface where research projects live. Reinstall at '
+             + 'user scope: /plugin install ' + plugin);
+        }
+      }
+    } else {
       // A bare name may resolve if exactly one plugin provides it.
       const suffix = [...skills.keys()].filter((k) => k.endsWith(`:${name}`));
       if (suffix.length === 1) {
@@ -854,6 +888,9 @@ function cmdDoctor(_pos, flags) {
       }
     }
   }
+  console.log('  note  presence on disk is all this checks. Whether the Skill tool can');
+  console.log('        actually invoke a skill is not verifiable from here, and a plugin');
+  console.log('        installed mid-session stays uninvocable until the session restarts.');
   if (skills.has('academic-research-skills:academic-pipeline')) {
     warn('academic-pipeline is installed. Never route stages to it — it is a '
        + 'competing orchestrator. Use its component skills only.');
