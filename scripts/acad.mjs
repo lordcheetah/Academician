@@ -870,8 +870,13 @@ function cmdDoctor(_pos, flags) {
     if (hit) {
       ok(`${slot}: ${name}  [${hit.source}]`);
       const plugin = name.includes(':') ? name.split(':')[0] : null;
-      for (const inst of (scopes.get(plugin) || [])) {
-        if (inst.scope === 'project' && !scopeWarned.has(plugin)) {
+      const installs = scopes.get(plugin) || [];
+      // A user-scope install supersedes a project-scope one, so only warn
+      // when project scope is the ONLY scope -- otherwise the warning fires
+      // forever after someone correctly reinstalls at user scope.
+      const hasUser = installs.some((i) => i.scope === 'user');
+      for (const inst of installs) {
+        if (inst.scope === 'project' && !hasUser && !scopeWarned.has(plugin)) {
           scopeWarned.add(plugin);
           warn(`  ${plugin} is installed at PROJECT scope for ${inst.projectPath}. `
              + 'It will not surface where research projects live. Reinstall at '
