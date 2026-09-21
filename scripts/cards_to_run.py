@@ -113,9 +113,16 @@ def parse_key_passages(body):
 
 
 def run_vendor(script, args):
+    # The vendored scripts call open() without an explicit encoding, so on
+    # Windows they inherit cp1252 and die on any non-latin-1 character -- and
+    # real source quotes are full of them (>=, en dashes, degree signs, Greek).
+    # PYTHONUTF8=1 forces UTF-8 mode in the child, which fixes it without
+    # editing vendor code (see vendor/deep-research-verify/NOTICE.md: the
+    # vendored files stay byte-for-byte upstream so refreshing is a re-copy).
+    env = dict(os.environ, PYTHONUTF8='1', PYTHONIOENCODING='utf-8')
     proc = subprocess.run(
         [sys.executable, os.path.join(VENDOR, script)] + args,
-        capture_output=True, text=True, encoding='utf-8',
+        capture_output=True, text=True, encoding='utf-8', env=env,
     )
     if proc.returncode != 0:
         die(f'{script} failed: {proc.stderr.strip() or proc.stdout.strip()}')

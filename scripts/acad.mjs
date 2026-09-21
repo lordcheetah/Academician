@@ -593,7 +593,11 @@ const SCRIPTS = path.join(HERE, 'scripts');
 const VENDOR = path.join(HERE, 'vendor', 'deep-research-verify', 'scripts');
 
 function runPy(script, argv, { allowExit = [0] } = {}) {
-  const res = spawnSync(PY, [script, ...argv], { encoding: 'utf8' });
+  // PYTHONUTF8: the vendored scripts open() without an encoding, so on Windows
+  // they inherit cp1252 and crash on quotes containing >=, en dashes, degree
+  // signs or Greek. Forcing UTF-8 mode fixes it without editing vendor code.
+  const env = { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' };
+  const res = spawnSync(PY, [script, ...argv], { encoding: 'utf8', env });
   if (res.error) {
     die(`could not run ${PY} — set ACAD_PYTHON to your interpreter (${res.error.message})`);
   }
