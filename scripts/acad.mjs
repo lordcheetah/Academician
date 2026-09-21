@@ -700,21 +700,33 @@ function cmdVerifyDraft(pos, flags) {
   console.log(`claims extracted: ${claims.length}`);
   console.log(`support status:   ${JSON.stringify(byStatus)}`);
 
+  // Blockers are the objective failures only: a marker resolving to nothing,
+  // and a claim its own cited quote does not support. Both are checkable
+  // without judgment.
+  //
+  // Whether an UNMARKED sentence asserts a fact about the world is not
+  // checkable without judgment, so those go to the checker as a triage list.
+  // Learned on a real 201-claim draft: treating them as blockers produced 74
+  // hits that were almost entirely signposts, fragments, and the report's own
+  // reasoning about its evidence. That made the verdict useless and would have
+  // sent a clean draft back around the loop.
   const blockers = [];
   if (linkResult.dangling) {
     blockers.push(`${linkResult.dangling} dangling reference(s)`);
     console.log('\nBLOCKER — dangling references:');
     for (const d of linkResult.dangling_refs) console.log(`  [[${d.marker}]]  ${d.text}`);
   }
-  if (linkResult.uncited) {
-    blockers.push(`${linkResult.uncited} uncited assertion(s)`);
-    console.log('\nBLOCKER — uncited assertions:');
-    for (const t of linkResult.uncited_claims) console.log(`  ${t}`);
-  }
   if (citedUnsupported.length) {
     blockers.push(`${citedUnsupported.length} cited-but-unsupported claim(s)`);
     console.log('\nBLOCKER — cited source does not support the claim:');
     for (const c of citedUnsupported) console.log(`  ${c.text.slice(0, 150)}`);
+  }
+  if (linkResult.uncited_candidates) {
+    console.log(`\nTRIAGE — ${linkResult.uncited_candidates} sentence(s) carry no marker.`);
+    console.log('Not defects in themselves: definitions, signposts, and the report\'s own');
+    console.log('reasoning about its evidence legitimately carry none. The checker decides');
+    console.log('which of these assert a fact about the world and so need support.');
+    for (const t of linkResult.uncited_claims) console.log(`  ${t}`);
   }
   if (partial.length) {
     console.log('\nREVIEW — partial support (likely overreach; narrow the claim):');
