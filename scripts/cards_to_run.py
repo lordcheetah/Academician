@@ -76,6 +76,27 @@ def parse_frontmatter(text):
     return fm, text[m.end():]
 
 
+def find_misplaced_quotes(body):
+    """Headings other than 'Key passages' that contain blockquotes.
+
+    'This card has no quote' and 'this card has quotes under a heading I do not
+    read' are very different problems, and reporting the second as the first
+    sends someone hunting for missing content that is sitting right there.
+    Cost a diagnostic round on a real card headed 'The measurement, as
+    reported' that held nineteen quote lines.
+    """
+    out = []
+    for m in re.finditer(r'^##\s*(.+?)\s*$(.*?)(?=^##\s|\Z)', body,
+                         re.MULTILINE | re.DOTALL):
+        heading, section = m.group(1), m.group(2)
+        if heading.strip().lower() == 'key passages':
+            continue
+        n = len(re.findall(r'^>\s*\S', section, re.MULTILINE))
+        if n:
+            out.append((heading, n))
+    return out
+
+
 def parse_key_passages(body):
     """Pull (quote, locator) pairs out of the '## Key passages' section.
 
@@ -84,6 +105,10 @@ def parse_key_passages(body):
         > "the quoted text, possibly
         > spanning lines"
         -- p. 17, Section 4.2
+
+    The heading is load-bearing on purpose: it is the one place a quote counts
+    as evidence. Accepting blockquotes from anywhere would let an aside in
+    Relevance support a claim.
     """
     m = re.search(r'^##\s*Key passages\s*$(.*?)(?=^##\s|\Z)', body,
                   re.MULTILINE | re.DOTALL | re.IGNORECASE)
@@ -156,7 +181,7 @@ def main():
                ['init-run', '--out-dir', out, '--query', args.query, '--mode', 'deep'])
 
     card_map = {}
-    counts = {'cards': 0, 'sources': 0, 'evidence': 0, 'no_quote': []}
+    counts = {'cards': 0, 'sources': 0, 'evidence': 0, 'no_quote': [], 'misplaced': []}
 
     for fname in sorted(os.listdir(cards_dir)):
         if not fname.endswith('.md') or fname == '.gitkeep':
@@ -204,7 +229,12 @@ def main():
 
         passages = parse_key_passages(body)
         if not passages:
-            counts['no_quote'].append(fm['id'])
+            misplaced = find_misplaced_quotes(body)
+            if misplaced:
+                where = '; '.join(f'"{h}" ({n} quote line(s))' for h, n in misplaced)
+                counts['misplaced'].append((fm['id'], where))
+            else:
+                counts['no_quote'].append(fm['id'])
         for quote, locator in passages:
             ev = {
                 'source_id': source_id,
@@ -226,14 +256,20 @@ def main():
         print(f'sources:  {counts["sources"]} registered ({counts["cards"] - counts["sources"]} duplicate locator)')
         print(f'evidence: {counts["evidence"]} quoted passages')
         print(f'run dir:  {out}')
+        if counts['misplaced']:
+            print('\nCards whose quotes sit under the WRONG HEADING:')
+            print('Quotes count as evidence only under "## Key passages". These cards')
+            print('have blockquotes elsewhere -- rename the heading, do not re-research.')
+            for cid, where in counts['misplaced']:
+                print(f'  {cid}\n      found under: {where}')
         if counts['no_quote']:
             # Not fatal here: the evidence checker decides what to do about it.
-            print('\nCards with NO key passage (cannot support any claim):')
+            print('\nCards with NO key passage anywhere (cannot support any claim):')
             for cid in counts['no_quote']:
                 print(f'  {cid}')
 
     # Exit 2 signals "converted, but some cards are unusable as support".
-    sys.exit(2 if counts['no_quote'] else 0)
+    sys.exit(2 if (counts['no_quote'] or counts['misplaced']) else 0)
 
 
 if __name__ == '__main__':
